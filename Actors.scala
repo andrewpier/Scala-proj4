@@ -34,6 +34,21 @@ case class QueryResult(fractionContaining: Double, numTotalPages: Int)
 // Actors
 
 // TODO: write the Fetcher class  
+class Fetcher extends Actor {
+    
+    def receive = {
+        case IndexRequest(url) => {
+            try{
+                val src = scala.io.Source.fromURL( url ).getLines.mkString("\n")
+                sender ! Some(RawPage(url,src))
+            }catch{
+                case e:  java.io.IOException => None
+            }
+        }
+    }
+    
+    
+}
 
 
 // Prompter asks the user to enter queries,
@@ -74,11 +89,27 @@ class Master extends Actor {
   def receive = {
    
     // TODO: handle StartIndexing message
-    
+    case StartCrawling(urls) => {
+        val workers = for (u <- 0 until urls.size) yield context.actorOf(Props[Fetcher],name = (s"fetcher-${u}"))
+        urls.zipWithIndex.foreach(thing => {workers(thing._2 % workers.size) ! IndexRequest(thing._1)})
+        val prompter = context.actorOf(Props[Prompter],name = "prompter")
+        prompter ! QueryResult(0,0)
+    }
+      
     // TODO: handle Query message
    
+    case Query(terms) => {
+        if(terms.size == 0) context.system.shutdown()
+        else{
+            var count = 0
+            for( page <- indexedPages) if(page.containsAll(terms)) count = count + 1
+            val percentage = count.toDouble / indexedPages.size.toDouble
+            sender ! QueryResult(percentage, indexedPages.size)
+        }
+    }
     case x: Option[_] => {
       // See if we got a RawPage back
+        
       x match {
         case Some(RawPage(url, html)) => {
           // Add the page to the indexed collections
