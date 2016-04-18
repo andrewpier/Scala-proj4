@@ -39,10 +39,11 @@ class Fetcher extends Actor {
     def receive = {
         case IndexRequest(url) => {
             try{
+                var count = 0
                 val src = scala.io.Source.fromURL( url ).getLines.mkString("\n")
                 sender ! Some(RawPage(url,src))
             }catch{
-                case e:  java.io.IOException => None
+                case e:  java.io.IOException => sender ! None
             }
         }
     }
@@ -67,7 +68,7 @@ class Prompter extends Actor {
         println((fracContaining*100.0) + "% of " + numTotalPages + " total pages matched.")
       }
       
-      // Prompt for the next query
+      //Prompt for the next query
       val q = scala.io.StdIn.readLine("Enter a query: ")
       
       sender ! Query(if(q.length == 0) Nil else q.split("(_|\\W)+").map(_.toLowerCase))
@@ -77,7 +78,7 @@ class Prompter extends Actor {
 
 class Master extends Actor {
   // TODO: Set maxPages lower for initial testing
-  val maxPages = 10
+  val maxPages = 50
 
   val urlsToIndex = scala.collection.mutable.HashSet[String]()
   
@@ -91,7 +92,7 @@ class Master extends Actor {
     // TODO: handle StartIndexing message
     case StartCrawling(urls) => {
         val workers = for (u <- 0 until urls.size) yield context.actorOf(Props[Fetcher],name = (s"fetcher-${u}"))
-        urls.zipWithIndex.foreach(thing => {workers(thing._2 % workers.size) ! IndexRequest(thing._1)})
+        urls.zipWithIndex.foreach(thing => {workers(thing._2 ) ! IndexRequest(thing._1)})
         val prompter = context.actorOf(Props[Prompter],name = "prompter")
         prompter ! QueryResult(0,0)
     }
@@ -104,7 +105,7 @@ class Master extends Actor {
             var count = 0
             for( page <- indexedPages) if(page.containsAll(terms)) count = count + 1
             val percentage = count.toDouble / indexedPages.size.toDouble
-            sender ! QueryResult(percentage, indexedPages.size)
+            sender ! QueryResult(percentage, indexedUrls.size)
         }
     }
     case x: Option[_] => {
@@ -118,8 +119,9 @@ class Master extends Actor {
           indexedUrls += url
       
           // Add the links found in the page to the set of links to index
-          urlsToIndex ++= pg.getLinks.filter( link =>
-              !urlsToIndex.contains(link) && !indexedUrls.contains(link) )
+
+          urlsToIndex ++= pg.getLinks.filter( link => !urlsToIndex.contains(link) && !indexedUrls.contains(link) )
+
         }
         case _ => Unit
       }  
