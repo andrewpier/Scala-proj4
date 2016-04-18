@@ -77,7 +77,7 @@ class Prompter extends Actor {
 
 class Master extends Actor {
   // TODO: Set maxPages lower for initial testing
-  val maxPages = 1000
+  val maxPages = 10
 
   val urlsToIndex = scala.collection.mutable.HashSet[String]()
   
